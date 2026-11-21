@@ -447,9 +447,10 @@ class TileGrid(_Virtual):
                 generation, key, image = self._results.get_nowait()
             except queue.Empty:
                 break
-            self._wanted.discard(key)
             if generation != self._generation:
-                continue                     # asked for by a list that's gone
+                continue                     # asked for by a list that's gone (the new list
+                                             # may want the same cover: leave it wanted)
+            self._wanted.discard(key)
             self.images[key] = ImageTk.PhotoImage(image) if image is not None else None
             changed.add(key)
         while len(self.images) > self.MAX_IMAGES:

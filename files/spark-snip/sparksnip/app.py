@@ -573,10 +573,10 @@ def release_lock():
 
 
 def write_pid_file():
-    from .recorder import pid_file
+    from .recorder import pid_file, pid_file_text
     try:
         with open(pid_file(), 'w', encoding='ascii') as f:
-            f.write(str(os.getpid()))
+            f.write(pid_file_text(os.getpid()))
     except OSError:
         log.exception("could not write the recording pid file")
 

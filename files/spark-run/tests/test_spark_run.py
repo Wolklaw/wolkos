@@ -12,6 +12,7 @@ import os
 import pathlib
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import tarfile
@@ -117,6 +118,14 @@ class PETests(Temp):
         self.assertEqual(errors.before_running(other).key, 'error.not_windows')
         empty = pe.inspect(self.write('empty.exe', b''))
         self.assertEqual(empty.kind, 'other')
+        # a half-downloaded installer: cut off in the middle of its headers
+        whole = forge.pe('x64')
+        at = struct.unpack_from('<I', whole, 0x3c)[0]
+        for cut in (at + 4, at + 10):
+            info = pe.inspect(self.write(f'cut{cut}.exe', whole[:cut]))
+            self.assertEqual(errors.before_running(info).key, 'error.not_windows')
+        for cut in range(at + 24, len(whole), 97):           # no stack trace, wherever it ends
+            pe.inspect(self.write(f'cut{cut}.exe', whole[:cut])).icon_ico()
 
     def test_msi(self):
         info = pe.inspect(self.write('x.msi', pe.MSI_MAGIC + b'\0' * 600))

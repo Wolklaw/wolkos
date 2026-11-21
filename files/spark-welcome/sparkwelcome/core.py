@@ -250,10 +250,12 @@ def xdg_user_dir(key: str, fallback: str) -> str:
 
 
 def _human_size(n: float) -> str:
+    """In the units Windows and Dolphin show (1 KB = 1024 bytes), so a drive reads the same
+    size here as in Windows: a 1 TB disk's C: is about 930 GB in both."""
     for unit in ('B', 'KB', 'MB', 'GB'):
-        if n < 1000:
+        if n < 1024:
             return f"{n:.0f} {unit}" if unit == 'B' else f"{n:.1f} {unit}"
-        n /= 1000.0
+        n /= 1024.0
     return f"{n:.1f} TB"
 
 

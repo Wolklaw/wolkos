@@ -696,9 +696,9 @@ class App:
             st = self.snap.state
             if st.get('running'):
                 return
-            if st.get('engine') == UUPD and self.busy == 'check' and \
-                    (st.get('last_run') or 0) < self.check_started - 1:
-                # uupd-manual hasn't started yet, or hasn't finished a run since the click
+            if self.busy == 'check' and (st.get('last_run') or 0) < self.check_started - 1:
+                # the unit hasn't started its run yet (or uupd-manual hasn't finished one since
+                # the click): the state still holds the last run's result, not this one's
                 if time.time() - self.check_started < 120:
                     self._watch()
                     return
