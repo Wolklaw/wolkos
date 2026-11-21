@@ -376,15 +376,15 @@ class HomeView(tk.Frame):
         k = event.keysym
         cols = self._columns()
         moves = {'Left': -1, 'Right': 1, 'Up': -cols, 'Down': cols}
-        if k in moves and self.kind == 'music' and k in ('Left', 'Right'):
+        if k == 'BackSpace' or (k == 'Up' and event.state & 0x8):      # Alt+Up, as in Dolphin
+            self._go_up()
+        elif k in moves and self.kind == 'music' and k in ('Left', 'Right'):
             return False
-        if k in moves:
+        elif k in moves:
             self._select(self.selected + moves[k])
         elif k in ('Return', 'KP_Enter'):
             if self.entries:
                 self.activate(self.selected)
-        elif k == 'BackSpace' or (k == 'Up' and event.state & 0x8):
-            self._go_up()
         elif k == 'Home':
             self._select(0)
         elif k == 'End':

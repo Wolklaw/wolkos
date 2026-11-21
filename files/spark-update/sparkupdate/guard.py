@@ -9,11 +9,30 @@ from typing import Any, Dict, Optional, Tuple
 from .core import Env
 from .text import EN
 
-# A process whose command line holds one of these is a game (or Wine/Proton, which is how
-# Windows games run): Steam starts every game under 'reaper SteamLaunch'; gamescope is the
-# game compositor; wineserver runs for as long as any Wine or Proton program does.
-GAME_MARKERS = (b'SteamLaunch', b'/gamescope', b'wineserver')
-GAME_NAMES = {b'gamescope', b'wineserver', b'gamescope-wl'}
+# A process whose command line holds one of these is a game: Steam starts every game under
+# 'reaper SteamLaunch'; gamescope is the game compositor.
+GAME_MARKERS = (b'SteamLaunch', b'/gamescope')
+GAME_NAMES = {b'gamescope', b'gamescope-wl'}
+# A Windows program under Wine or Proton (Lutris, Heroic, Bottles) shows its Windows path as
+# its name: C:\...\Wow.exe. It's a game unless it is one of Wine's own programs (in
+# C:\windows) or a launcher that sits open all day (Battle.net, Epic, GOG Galaxy, EA,
+# Ubisoft Connect, Steam for Windows) or one of their helpers. wineserver alone is not a game:
+# it runs as long as any of those launchers do, which would hold updates back for days.
+NOT_GAMES = (b'battle.net', b'agent.exe', b'blizzard', b'launcher', b'helper', b'crash',
+             b'updat', b'service', b'browser', b'galaxy', b'eadesktop', b'eabackground',
+             b'origin', b'upc.exe', b'ubisoftconnect', b'uplay', b'steam.exe', b'socialclub',
+             b'setup', b'install', b'unins', b'winecfg', b'regedit', b'notepad')
+
+
+def windows_game(argv0: bytes) -> Optional[bytes]:
+    """The .exe's name when argv0 is a Windows game under Wine, else None."""
+    path = argv0.replace(b'\\', b'/').lower()
+    if not path.endswith(b'.exe') or b'/windows/' in path:
+        return None
+    name = path.rsplit(b'/', 1)[-1]
+    if any(word in name for word in NOT_GAMES):
+        return None
+    return argv0.replace(b'\\', b'/').rsplit(b'/', 1)[-1]
 
 
 def game_running(env: Env) -> Optional[str]:
@@ -31,11 +50,15 @@ def game_running(env: Env) -> Optional[str]:
             continue
         if not cmd:
             continue
-        argv0 = os.path.basename(cmd.split(b'\0', 1)[0])
+        first = cmd.split(b'\0', 1)[0]
+        argv0 = os.path.basename(first)
         if argv0 in GAME_NAMES or any(m in cmd for m in GAME_MARKERS):
             if argv0 == b'gamescope-session' or b'gamescope-session' in argv0:
                 continue          # the Steam Deck style session itself is not a game
             return argv0.decode(errors='replace') or pid
+        exe = windows_game(first)
+        if exe:
+            return exe.decode(errors='replace')
     return None
 
 

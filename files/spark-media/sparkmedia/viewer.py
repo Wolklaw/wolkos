@@ -82,6 +82,8 @@ class PhotoView(tk.Frame):
         self._rotated: Dict[int, Image.Image] = {}
         self._decoded: Dict[str, Optional[Image.Image]] = {}     # filled by the decode thread
         self._decoding: Optional[str] = None
+        self._decode_thread: Optional[threading.Thread] = None
+        self._decode_next: Optional[str] = None
         # edit mode
         self.editing = False
         self.edits = ed.Edits()
@@ -154,6 +156,11 @@ class PhotoView(tk.Frame):
             self._anim_id = self.after(self.photo.durations[0], self._animate)
         if self.photo is not None and self.photo.needs_decode:
             self._start_decode(path)
+        # preloaded photos that are no longer next to this one: let them go (each is a whole
+        # decoded picture)
+        near = {self.files[(self.index + d) % len(self.files)] for d in (-1, 0, 1)}
+        for stale in [p for p in list(self._ready) if p not in near]:
+            self._ready.pop(stale, None)
         many = len(self.files) > 1
         self.buttons["prev"].set_enabled(many)
         self.buttons["next"].set_enabled(many)
@@ -163,43 +170,49 @@ class PhotoView(tk.Frame):
 
     # ── RAW: the full picture, developed in the background ──
     def _start_decode(self, path: str):
-        if self._decoding == path or path in self._decoded:
-            self._decode_poll()
-            return
-        self._decoding = path
+        """One LibRaw decode at a time (each holds the whole photo in memory): flipping through
+        a folder of RAWs develops the one you stop on, not every one you passed."""
+        busy = self._decode_thread is not None and self._decode_thread.is_alive()
+        if busy:
+            if self._decoding != path:
+                self._decode_next = path
+        else:
+            self._decoding, self._decode_next = path, None
 
-        def work():
-            self._decoded[path] = raw.decode(path)
+            def work():
+                self._decoded[path] = raw.decode(path)
 
-        threading.Thread(target=work, daemon=True, name='raw-decode').start()
+            self._decode_thread = threading.Thread(target=work, daemon=True, name='raw-decode')
+            self._decode_thread.start()
         if self._decode_id is None:
             self._decode_id = self.after(200, self._decode_poll)
 
     def _decode_poll(self):
         self._decode_id = None
-        path = self._decoding
-        if path is None:
-            return
-        if path not in self._decoded:
+        if self._decode_thread is not None and self._decode_thread.is_alive():
             self._decode_id = self.after(200, self._decode_poll)      # only while developing
             return
-        image = self._decoded.pop(path)
-        self._decoding = None
-        photo = self.cache.get(path)
-        if photo is None or not photo.needs_decode:
-            return
-        if image is None:
-            photo.needs_decode = False          # keep the preview; the log says why
-            log.info("keeping the camera preview of %s", path)
-        else:
+        path, self._decoding, self._decode_thread = self._decoding, None, None
+        image = self._decoded.pop(path, None) if path else None
+        self._decoded.clear()
+        photo = self.cache.get(path) if path else None
+        if photo is not None and photo.needs_decode:
+            if image is None:
+                photo.needs_decode = False          # keep the preview; the log says why
+                log.info("keeping the camera preview of %s", path)
+            else:
+                if self.photo is photo:
+                    self._rescale_crop(image.width / max(1, photo.size[0]))
+                photo.use_decoded(image)
             if self.photo is photo:
-                self._rescale_crop(image.width / max(1, photo.size[0]))
-            photo.use_decoded(image)
-        if self.photo is photo:
-            self._rotated.clear()
-            self._edit_cache = None
-            self._update_info()
-            self.render()
+                self._rotated.clear()
+                self._edit_cache = None
+                self._update_info()
+                self.render()
+        wanted, self._decode_next = self._decode_next, None
+        if wanted and self.photo is not None and self.photo.path == wanted \
+                and self.photo.needs_decode:
+            self._start_decode(wanted)
 
     def _update_info(self):
         path = self.files[self.index]
@@ -716,6 +729,7 @@ class PhotoView(tk.Frame):
             return
         self._leave_edit()
         self.cache.pop(saved, None)
+        self._ready.pop(saved, None)            # a preload from before the save is out of date
         if saved not in self.files:
             self.files.insert(self.index + 1, saved)
         self.app.set_status(tr('status.saved_as', name=os.path.basename(saved)), T["accent"])

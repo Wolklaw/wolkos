@@ -145,12 +145,14 @@ def inspect(path: str, markers: bool = True) -> PEInfo:
                 if ver:
                     try:
                         info.strings = version_strings(ver)
-                    except (struct.error, IndexError, UnicodeDecodeError):
+                    except (struct.error, IndexError, UnicodeDecodeError, RecursionError):
                         info.strings = {}
             if not info.installer and markers:
                 info.installer = _installer_marker(f, info)
     except OSError:
         pass
+    except (struct.error, ValueError):
+        pass        # a cut-off header (a half-downloaded installer): what was read so far
     return info
 
 

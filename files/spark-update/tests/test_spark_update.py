@@ -543,7 +543,7 @@ class UserRunTests(unittest.TestCase):
         self.assertEqual(len(self.shown), 2)
 
     def test_never_during_a_game(self):
-        add_proc(self.root, 777, ['/usr/bin/wineserver'])
+        add_proc(self.root, 777, ['C:\\Program Files (x86)\\World of Warcraft\\_retail_\\Wow.exe'])
         updater.user_run(self.env, runner=FakeRunner(self.root), clock=self.clock,
                          notifier=self.notifier())
         self.assertEqual(self.shown, [])
@@ -709,6 +709,22 @@ class GuardTests(unittest.TestCase):
         self.assertIsNone(guard.game_running(env))
         add_proc(root, 3, ['/usr/bin/gamescope', '-W', '2560', '--', 'game'])
         self.assertEqual(guard.game_running(env), 'gamescope')
+
+    def test_a_launcher_open_all_day_is_not_a_game(self):
+        """Battle.net under Lutris keeps Wine running; only the game itself holds updates."""
+        root = make_root()
+        env = Env(root)
+        add_proc(root, 10, ['/usr/bin/wineserver'])
+        add_proc(root, 11, ['C:\\windows\\system32\\services.exe'])
+        add_proc(root, 12, ['C:\\windows\\system32\\winedevice.exe'])
+        add_proc(root, 13, ['C:\\Program Files (x86)\\Battle.net\\Battle.net.exe',
+                            '--type=renderer'])
+        add_proc(root, 14, ['C:\\ProgramData\\Battle.net\\Agent\\Agent.9113\\Agent.exe'])
+        add_proc(root, 15, ['C:\\Program Files (x86)\\Epic Games\\Launcher\\Portal\\Binaries'
+                            '\\Win64\\EpicGamesLauncher.exe'])
+        self.assertIsNone(guard.game_running(env))
+        add_proc(root, 16, ['C:\\Program Files (x86)\\World of Warcraft\\_retail_\\Wow.exe'])
+        self.assertEqual(guard.game_running(env), 'Wow.exe')
 
 
 # ─── Command line ───────────────────────────────────────────

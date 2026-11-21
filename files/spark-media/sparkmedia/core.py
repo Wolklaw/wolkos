@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 from logging.handlers import RotatingFileHandler
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote, unquote, urlparse
@@ -550,7 +551,7 @@ def store_thumbnail(path: str, image: Image.Image, flavour: str = 'large') -> No
         info.add_text('Thumb::URI', file_uri(path))
         info.add_text('Thumb::MTime', str(int(os.path.getmtime(path))))
         info.add_text('Software', APP_NAME)
-        tmp = f'{thumb}.{os.getpid()}.tmp'
+        tmp = f'{thumb}.{os.getpid()}.{threading.get_ident()}.tmp'    # threads make them too
         image.save(tmp, 'PNG', pnginfo=info)
         os.chmod(tmp, 0o600)
         os.replace(tmp, thumb)
