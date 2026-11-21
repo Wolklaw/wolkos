@@ -484,15 +484,39 @@ def pid_file() -> str:
     return os.path.join(runtime_dir(), f'{APP_SLUG}-recording.pid')
 
 
-def running_recorder() -> Optional[int]:
-    """The pid of a Spark Snip that is recording right now, if any."""
+def process_start(pid: int, proc: str = '/proc') -> Optional[str]:
+    """When a process started (clock ticks since boot), which tells a reused PID apart."""
     try:
-        with open(pid_file(), encoding='ascii') as f:
-            pid = int(f.read().strip())
-        os.kill(pid, 0)
-        return pid
-    except (OSError, ValueError):
+        with open(f'{proc}/{pid}/stat', 'rb') as f:
+            data = f.read()
+        return data[data.rfind(b')') + 2:].split()[19].decode()
+    except (OSError, IndexError):
         return None
+
+
+def pid_file_text(pid: int, proc: str = '/proc') -> str:
+    return f"{pid} {process_start(pid, proc) or ''}".strip()
+
+
+def running_recorder(path: Optional[str] = None, proc: str = '/proc') -> Optional[int]:
+    """The pid of a Spark Snip that is recording right now, if any. The file holds the pid
+    and its start time: a file left by a crash names a PID that may belong to another program
+    by now, and SIGUSR1 would end that program."""
+    try:
+        with open(path or pid_file(), encoding='ascii') as f:
+            fields = f.read().split()
+        pid = int(fields[0])
+    except (OSError, ValueError, IndexError):
+        return None
+    if len(fields) < 2 or process_start(pid, proc) != fields[1]:
+        return None
+    try:
+        with open(f'{proc}/{pid}/cmdline', 'rb') as f:
+            if b'spark' not in f.read().lower():
+                return None
+    except OSError:
+        return None
+    return pid
 
 
 def self_test_encode(seconds: float = 1.5) -> Dict[str, Any]:

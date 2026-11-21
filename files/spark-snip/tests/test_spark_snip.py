@@ -131,6 +131,48 @@ class LogicTests(unittest.TestCase):
         self.assertEqual(core.load_config()['mode'], 'video')
 
 
+class RecorderPidTests(unittest.TestCase):
+    """Meta+Shift+R while recording sends SIGUSR1 to the recording Spark Snip. A pid file left
+    by a crash must never send it to whatever program has that PID now (SIGUSR1 ends it)."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.proc = os.path.join(self.tmp, 'proc')
+        self.pidfile = os.path.join(self.tmp, 'rec.pid')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def process(self, pid, start, cmdline):
+        folder = os.path.join(self.proc, str(pid))
+        os.makedirs(folder, exist_ok=True)
+        fields = ['S'] + ['0'] * 18 + [str(start)] + ['0'] * 10
+        with open(os.path.join(folder, 'stat'), 'w') as f:
+            f.write(f"{pid} (python3) " + ' '.join(fields) + '\n')
+        with open(os.path.join(folder, 'cmdline'), 'wb') as f:
+            f.write(bytes(1).join(cmdline) + bytes(1))
+
+    def write(self, text):
+        with open(self.pidfile, 'w') as f:
+            f.write(text)
+
+    def test_only_the_recording_spark_snip(self):
+        self.process(4242, 9000, [b'/usr/bin/python3', b'/usr/lib/spark-snip/spark_snip.py'])
+        self.write(recorder.pid_file_text(4242, self.proc))
+        self.assertEqual(recorder.running_recorder(self.pidfile, self.proc), 4242)
+        # the PID now belongs to a game that started later: not ours
+        self.process(4242, 12345, [rb'C:\Games\game.exe'])
+        self.assertIsNone(recorder.running_recorder(self.pidfile, self.proc))
+        # an old file with only a PID (or another program with the same start): never
+        self.write('4242')
+        self.assertIsNone(recorder.running_recorder(self.pidfile, self.proc))
+        self.process(4242, 9000, [b'/usr/bin/steam'])
+        self.write('4242 9000')
+        self.assertIsNone(recorder.running_recorder(self.pidfile, self.proc))
+        os.remove(self.pidfile)
+        self.assertIsNone(recorder.running_recorder(self.pidfile, self.proc))
+
+
 class CaptureLogicTests(unittest.TestCase):
     """Reading the screen without needing Spectacle: decoding, order, desktop entry."""
 
